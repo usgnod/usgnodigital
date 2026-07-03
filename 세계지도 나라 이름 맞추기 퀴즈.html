@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>세계지도 나라 맞추기 — 대륙 여권</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;900&family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root{
+    --ink-deep:#16332C;
+    --ink-deep-2:#0E2620;
+    --paper:#F1E7D2;
+    --paper-deep:#DECBA0;
+    --stamp-red:#B23B2E;
+    --brass:#C9A227;
+    --ink-text:#2A241C;
+    --success:#3F6B4A;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 12% 8%, rgba(201,162,39,0.10), transparent 40%),
+      radial-gradient(circle at 88% 92%, rgba(201,162,39,0.08), transparent 45%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 56px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 56px),
+      linear-gradient(160deg, var(--ink-deep), var(--ink-deep-2));
+    color:var(--paper);
+    font-family:'Noto Sans KR', sans-serif;
+    min-height:100vh;
+  }
+  .mono{font-family:'JetBrains Mono', monospace;}
+  .serif{font-family:'Noto Serif KR', serif;}
+
+  .app-shell{max-width:1080px;margin:0 auto;padding:20px 18px 60px;}
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    flex-wrap:wrap;
+    padding-bottom:18px;border-bottom:1px solid rgba(241,231,210,0.18);
+    margin-bottom:22px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand svg{width:36px;height:36px;flex:none;}
+  .brand-eyebrow{font-size:11px;letter-spacing:0.18em;color:var(--brass);margin:0 0 2px;text-transform:uppercase;}
+  .brand-title{font-size:20px;margin:0;font-weight:700;}
+  .topbar-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .pill{
+    padding:6px 12px;border-radius:999px;font-size:13px;
+    background:rgba(241,231,210,0.10);border:1px solid rgba(241,231,210,0.25);
+    display:flex;align-items:center;gap:6px;
+  }
+  .pill .mono{color:var(--brass);font-weight:700;}
+  .pill.exit-pill{cursor:pointer;background:transparent;}
+  .pill.exit-pill:hover{background:rgba(241,231,210,0.10);}
+
+  /* ---------- views ---------- */
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ---------- menu ---------- */
+  .menu-head h1{font-size:26px;margin:0 0 8px;}
+  .menu-head p{margin:0 0 26px;color:rgba(241,231,210,0.75);font-size:14.5px;line-height:1.6;}
+  .menu-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+  }
+  .stage-card{
+    text-align:left;border-radius:var(--radius);
+    border:1px solid rgba(241,231,210,0.22);
+    background:rgba(241,231,210,0.06);
+    color:var(--paper);padding:18px 16px;cursor:pointer;
+    transition:transform .15s ease, background .15s ease, border-color .15s ease;
+    font-family:inherit;
+  }
+  .stage-card:hover:not(:disabled){transform:translateY(-3px);background:rgba(241,231,210,0.12);border-color:var(--brass);}
+  .stage-card:disabled{opacity:0.45;cursor:not-allowed;}
+  .stage-card .num{font-family:'JetBrains Mono',monospace;color:var(--brass);font-size:12px;letter-spacing:0.08em;}
+  .stage-card .name{font-family:'Noto Serif KR',serif;font-size:19px;font-weight:700;margin:6px 0 4px;}
+  .stage-card .count{font-size:12.5px;color:rgba(241,231,210,0.65);}
+  .stage-card .best{margin-top:10px;font-size:12px;color:var(--brass);font-family:'JetBrains Mono',monospace;}
+  .loading-note{margin-top:18px;font-size:13px;color:rgba(241,231,210,0.6);}
+  .error-banner{
+    margin-top:18px;padding:14px 16px;border-radius:10px;
+    background:rgba(178,59,46,0.18);border:1px solid var(--stamp-red);
+    font-size:13.5px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+
+  /* ---------- quiz layout ---------- */
+  .quiz-layout{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;align-items:start;}
+  .map-panel{
+    background:var(--paper);border-radius:var(--radius);
+    aspect-ratio:5/4;min-height:300px;position:relative;overflow:hidden;
+    box-shadow:0 14px 30px rgba(0,0,0,0.25);
+  }
+  .map-host{width:100%;height:100%;}
+  .map-host svg{display:block;width:100%;height:100%;}
+  .map-loading{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--ink-text);font-size:13.5px;font-family:'JetBrains Mono',monospace;
+  }
+  path.country{fill:var(--paper-deep);stroke:#b9a679;stroke-width:0.75;}
+  path.country.target{fill:var(--stamp-red);stroke:var(--ink-text);stroke-width:1.6;animation:targetPulse 1.7s ease-in-out infinite;}
+  @keyframes targetPulse{0%,100%{stroke-width:1.6;filter:drop-shadow(0 0 0 rgba(178,59,46,0));}50%{stroke-width:3;filter:drop-shadow(0 0 6px rgba(178,59,46,0.55));}}
+
+  .quiz-panel{
+    background:rgba(241,231,210,0.07);border:1px solid rgba(241,231,210,0.2);
+    border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:14px;
+  }
+  .prompt{font-family:'Noto Serif KR',serif;font-size:17px;}
+  .answer-form{display:flex;gap:8px;}
+  .answer-input{
+    flex:1;padding:11px 13px;border-radius:8px;border:1px solid rgba(241,231,210,0.35);
+    background:rgba(241,231,210,0.92);color:var(--ink-text);font-size:15px;font-family:inherit;
+  }
+  .answer-input:focus{outline:2px solid var(--brass);outline-offset:1px;}
+  .btn{
+    border:none;border-radius:8px;padding:11px 16px;font-size:14px;cursor:pointer;
+    font-family:inherit;font-weight:700;transition:filter .15s ease, transform .1s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--brass);color:var(--ink-deep-2);}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{background:transparent;color:var(--paper);border:1px solid rgba(241,231,210,0.4);}
+  .btn-ghost:hover{background:rgba(241,231,210,0.1);}
+  .btn:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .hint-row{display:flex;gap:8px;flex-wrap:wrap;}
+  .hint-btn{
+    padding:8px 12px;font-size:13px;border-radius:999px;cursor:pointer;
+    background:transparent;border:1px dashed rgba(241,231,210,0.45);color:var(--paper);font-family:inherit;
+  }
+  .hint-btn:hover:not(:disabled){border-color:var(--brass);color:var(--brass);}
+  .hint-btn.used{border-style:solid;border-color:var(--brass);color:var(--brass);background:rgba(201,162,39,0.12);}
+  .hint-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .skip-btn{margin-left:auto;}
+
+  .hint-display{display:flex;flex-direction:column;gap:6px;min-height:4px;}
+  .hint-line{font-size:13.5px;padding:8px 10px;border-radius:8px;background:rgba(201,162,39,0.10);border:1px solid rgba(201,162,39,0.3);}
+  .hint-line .tag{font-family:'JetBrains Mono',monospace;color:var(--brass);font-size:11px;margin-right:8px;letter-spacing:0.05em;}
+  .hint-line.chosung-line{font-family:'JetBrains Mono',monospace;font-size:15px;letter-spacing:0.12em;}
+
+  .feedback{min-height:24px;font-size:14.5px;font-weight:700;}
+  .feedback.correct{color:#9FD8A8;}
+  .feedback.wrong{color:#E8A39A;}
+  .feedback.passed{color:var(--brass);}
+
+  .next-btn{align-self:flex-start;}
+
+  .stamp-strip{
+    margin-top:18px;display:flex;gap:8px;overflow-x:auto;padding:10px 2px;
+  }
+  .stamp{
+    flex:none;width:64px;height:64px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.15;padding:4px;
+    border:2px dashed;transform:rotate(-6deg);
+  }
+  .stamp.ok{border-color:#9FD8A8;color:#9FD8A8;}
+  .stamp.fail{border-color:rgba(241,231,210,0.4);color:rgba(241,231,210,0.55);}
+
+  /* ---------- result ---------- */
+  .result-card{
+    background:rgba(241,231,210,0.07);border:1px solid rgba(241,231,210,0.2);
+    border-radius:var(--radius);padding:26px;
+  }
+  .result-card h2{font-family:'Noto Serif KR',serif;font-size:24px;margin:0 0 4px;}
+  .result-card .sub{color:rgba(241,231,210,0.7);font-size:13.5px;margin-bottom:18px;}
+  .result-stats{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px;}
+  .stat{background:rgba(0,0,0,0.18);border-radius:10px;padding:12px 16px;min-width:110px;}
+  .stat .num{font-family:'JetBrains Mono',monospace;font-size:24px;color:var(--brass);}
+  .stat .label{font-size:12px;color:rgba(241,231,210,0.65);margin-top:2px;}
+  .result-actions{display:flex;gap:10px;flex-wrap:wrap;}
+
+  @media (max-width: 780px){
+    .menu-grid{grid-template-columns:repeat(2,1fr);}
+    .quiz-layout{grid-template-columns:1fr;}
+    .map-panel{aspect-ratio:4/3;}
+  }
+  @media (max-width: 460px){
+    .menu-grid{grid-template-columns:1fr;}
+    .answer-form{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <div class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="18" stroke="#C9A227" stroke-width="2"/>
+        <path d="M20 4 L23 18 L20 36 L17 18 Z" fill="#C9A227" opacity="0.85"/>
+        <path d="M4 20 L18 17 L36 20 L18 23 Z" fill="#F1E7D2" opacity="0.6"/>
+        <circle cx="20" cy="20" r="2.4" fill="#16332C" stroke="#C9A227" stroke-width="1"/>
+      </svg>
+      <div>
+        <p class="brand-eyebrow mono">geography passport</p>
+        <p class="brand-title serif">세계지도 나라 맞추기</p>
+      </div>
+    </div>
+    <div class="topbar-status" id="topbarStatus"></div>
+  </div>
+
+  <!-- ===== MENU VIEW ===== -->
+  <div class="view active" id="view-menu">
+    <div class="menu-head">
+      <h1 class="serif">어디부터 떠나볼까요?</h1>
+      <p>대륙을 하나씩 선택해서, 지도에 표시된 나라의 이름을 맞히는 여행을 시작하세요. 헷갈리면 초성 힌트와 특징 힌트를 사용할 수 있어요.</p>
+    </div>
+    <div class="menu-grid" id="menuGrid"></div>
+    <div class="loading-note" id="loadingNote">지도 데이터를 불러오는 중입니다…</div>
+    <div class="error-banner" id="errorBanner" style="display:none;">
+      <span id="errorMsg">지도 데이터를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.</span>
+      <button class="btn btn-primary" id="btnRetry">다시 시도</button>
+    </div>
+  </div>
+
+  <!-- ===== QUIZ VIEW ===== -->
+  <div class="view" id="view-quiz">
+    <div class="quiz-layout">
+      <div class="map-panel">
+        <div class="map-host" id="mapHost"></div>
+        <div class="map-loading" id="mapLoading" style="display:none;">지도를 그리는 중…</div>
+      </div>
+      <div class="quiz-panel">
+        <div class="prompt serif">지도에 빨갛게 표시된 나라는 어디일까요?</div>
+        <form class="answer-form" id="answerForm">
+          <input class="answer-input" id="answerInput" autocomplete="off" placeholder="나라 이름을 입력하세요" />
+          <button class="btn btn-primary" type="submit">제출</button>
+        </form>
+        <div class="hint-row">
+          <button class="hint-btn" id="btnChosung" type="button">초성 힌트</button>
+          <button class="hint-btn" id="btnFact" type="button">특징 힌트</button>
+          <button class="hint-btn skip-btn" id="btnSkip" type="button">모르겠어요 (정답 보기)</button>
+        </div>
+        <div class="hint-display" id="hintDisplay"></div>
+        <div class="feedback" id="feedback"></div>
+        <button class="btn btn-ghost next-btn" id="btnNext" type="button" style="display:none;">다음 나라 →</button>
+      </div>
+    </div>
+    <div class="stamp-strip" id="stampStrip"></div>
+  </div>
+
+  <!-- ===== RESULT VIEW ===== -->
+  <div class="view" id="view-result">
+    <div class="result-card">
+      <h2 id="resultTitle">대륙 완주!</h2>
+      <p class="sub" id="resultSub"></p>
+      <div class="result-stats" id="resultStats"></div>
+      <div class="result-actions">
+        <button class="btn btn-primary" id="btnRetryStage">다시 도전</button>
+        <button class="btn btn-ghost" id="btnNextStage" style="display:none;">다음 대륙으로 →</button>
+        <button class="btn btn-ghost" id="btnToMenu">대륙 선택으로</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   DATA
+========================================================= */
+const STAGES = ['asia','europe','africa','namerica','samerica','oceania'];
+const STAGE_LABEL = {
+  asia:'아시아', europe:'유럽', africa:'아프리카',
+  namerica:'북아메리카', samerica:'남아메리카', oceania:'오세아니아'
+};
+
+const COUNTRIES = [
+  // ---------- ASIA ----------
+  {kr:'대한민국', en:['South Korea','Republic of Korea','Korea, Republic of','Korea'], continent:'asia', hint:'반도의 남쪽에 위치, 수도는 서울이며 K-POP과 한류로 유명한 나라'},
+  {kr:'북한', en:['North Korea','Korea, Dem. Rep.',"Korea, Dem. People's Rep. of",'Korea, North'], continent:'asia', hint:'반도의 북쪽에 위치, 수도는 평양인 폐쇄적인 사회주의 나라'},
+  {kr:'중국', en:['China',"People's Republic of China"], continent:'asia', hint:'만리장성과 자금성이 있는, 세계에서 인구가 가장 많은 나라 중 하나'},
+  {kr:'일본', en:['Japan'], continent:'asia', hint:'후지산과 벚꽃, 스시로 유명한 동아시아의 섬나라'},
+  {kr:'몽골', en:['Mongolia'], continent:'asia', hint:'넓은 초원에서 유목 생활을 하며 게르(이동식 천막)에 사는 사람들이 많은 내륙국'},
+  {kr:'대만', en:['Taiwan'], continent:'asia', hint:'타이베이101 빌딩이 있고, 중국 동남쪽에 위치한 섬'},
+  {kr:'베트남', en:['Vietnam','Viet Nam'], continent:'asia', hint:"쌀국수 '퍼'가 유명하고, 남북으로 길게 뻗은 동남아시아 나라"},
+  {kr:'태국', en:['Thailand'], continent:'asia', hint:"사원이 많고 '미소의 나라'라 불리는 동남아시아 나라"},
+  {kr:'미얀마', en:['Myanmar','Burma'], aliasesKr:['버마'], continent:'asia', hint:"불교 사원이 많고, 예전 이름이 '버마'였던 나라"},
+  {kr:'라오스', en:['Laos','Lao PDR'], continent:'asia', hint:'동남아시아의 내륙국으로, 메콩강이 흐르는 나라'},
+  {kr:'캄보디아', en:['Cambodia'], continent:'asia', hint:'앙코르와트 사원 유적으로 유명한 동남아시아 나라'},
+  {kr:'말레이시아', en:['Malaysia'], continent:'asia', hint:'쌍둥이 빌딩 페트로나스 타워가 있는 동남아시아 나라'},
+  {kr:'싱가포르', en:['Singapore'], continent:'asia', hint:'머라이언 동상이 있는 작은 도시국가'},
+  {kr:'인도네시아', en:['Indonesia'], continent:'asia', hint:'세계에서 섬이 가장 많은 나라로 알려진 동남아시아 나라'},
+  {kr:'필리핀', en:['Philippines'], continent:'asia', hint:'7천 개가 넘는 섬으로 이루어진 동남아시아 나라'},
+  {kr:'인도', en:['India'], continent:'asia', hint:'타지마할이 있고, 인구가 매우 많은 남아시아 나라'},
+  {kr:'파키스탄', en:['Pakistan'], continent:'asia', hint:'인더스강이 흐르고, 카라코람산맥이 있는 남아시아 나라'},
+  {kr:'방글라데시', en:['Bangladesh'], continent:'asia', hint:'갠지스강 삼각주에 위치한, 인구밀도가 매우 높은 나라'},
+  {kr:'스리랑카', en:['Sri Lanka'], continent:'asia', hint:'인도 아래에 있는 눈물 모양의 섬나라, 홍차로 유명'},
+  {kr:'네팔', en:['Nepal'], continent:'asia', hint:'세계 최고봉 에베레스트산이 있는 산악 나라'},
+  {kr:'아프가니스탄', en:['Afghanistan'], continent:'asia', hint:'중앙아시아와 남아시아 사이에 있는 험준한 산악 나라'},
+  {kr:'카자흐스탄', en:['Kazakhstan'], continent:'asia', hint:'중앙아시아에서 영토가 가장 넓은 나라'},
+  {kr:'우즈베키스탄', en:['Uzbekistan'], continent:'asia', hint:'사마르칸트 등 옛 실크로드 도시들이 있는 중앙아시아 나라'},
+  {kr:'이란', en:['Iran','Islamic Republic of Iran'], continent:'asia', hint:"예전 이름이 '페르시아'였던 중동 나라"},
+  {kr:'이라크', en:['Iraq'], continent:'asia', hint:'티그리스강과 유프라테스강 사이, 고대 메소포타미아 문명이 있던 곳'},
+  {kr:'사우디아라비아', en:['Saudi Arabia'], continent:'asia', hint:'이슬람 성지 메카가 있는 아라비아반도의 나라'},
+  {kr:'아랍에미리트', en:['United Arab Emirates'], aliasesKr:['UAE','아랍에미리트연합'], continent:'asia', hint:'초고층 빌딩 부르즈 칼리파와 두바이가 있는 나라'},
+  {kr:'이스라엘', en:['Israel'], continent:'asia', hint:'예루살렘이 있는 중동의 나라'},
+  {kr:'튀르키예', en:['Turkey','Turkiye'], aliasesKr:['터키'], continent:'asia', hint:'아시아와 유럽 두 대륙에 걸쳐 있고, 이스탄불이 있는 나라'},
+
+  // ---------- EUROPE ----------
+  {kr:'영국', en:['United Kingdom','UK'], aliasesKr:['UK','그레이트브리튼'], continent:'europe', hint:'빅벤과 버킹엄궁이 있는, 유럽 서쪽의 섬나라'},
+  {kr:'프랑스', en:['France'], continent:'europe', hint:'에펠탑과 루브르 박물관이 있는 나라'},
+  {kr:'독일', en:['Germany'], continent:'europe', hint:'맥주 축제 옥토버페스트와 자동차 산업으로 유명한 나라'},
+  {kr:'이탈리아', en:['Italy'], continent:'europe', hint:'장화 모양의 반도, 콜로세움과 피자로 유명한 나라'},
+  {kr:'스페인', en:['Spain'], continent:'europe', hint:'투우와 플라멩코, 가우디 건축물로 유명한 나라'},
+  {kr:'포르투갈', en:['Portugal'], continent:'europe', hint:'이베리아반도 서쪽 끝에 있는, 항해의 시대를 열었던 나라'},
+  {kr:'네덜란드', en:['Netherlands','Holland'], continent:'europe', hint:'풍차와 튤립, 자전거로 유명한 저지대 나라'},
+  {kr:'벨기에', en:['Belgium'], continent:'europe', hint:'와플과 초콜릿으로 유명한 서유럽의 작은 나라'},
+  {kr:'스위스', en:['Switzerland'], continent:'europe', hint:'알프스산맥과 정밀시계로 유명한, 영세중립국'},
+  {kr:'오스트리아', en:['Austria'], continent:'europe', hint:'음악가 모차르트가 태어난 나라, 수도는 빈'},
+  {kr:'폴란드', en:['Poland'], continent:'europe', hint:'작곡가 쇼팽의 고향인 동유럽 나라'},
+  {kr:'체코', en:['Czech Republic','Czechia'], aliasesKr:['체코공화국'], continent:'europe', hint:'프라하성과 동화 같은 거리로 유명한 중부 유럽 나라'},
+  {kr:'헝가리', en:['Hungary'], continent:'europe', hint:'다뉴브강이 도시를 가로지르는, 수도는 부다페스트인 나라'},
+  {kr:'루마니아', en:['Romania'], continent:'europe', hint:'드라큘라 전설의 배경이 된 동유럽 나라'},
+  {kr:'그리스', en:['Greece'], continent:'europe', hint:'고대 신전 파르테논과 올림픽의 발상지인 나라'},
+  {kr:'우크라이나', en:['Ukraine'], continent:'europe', hint:'해바라기 들판이 넓게 펼쳐진, 유럽에서 영토가 매우 큰 나라'},
+  {kr:'러시아', en:['Russia','Russian Federation'], aliasesKr:['러시아연방'], continent:'europe', hint:'세계에서 영토가 가장 넓은 나라'},
+  {kr:'핀란드', en:['Finland'], continent:'europe', hint:'산타클로스 마을과 사우나로 유명한 북유럽 나라'},
+  {kr:'스웨덴', en:['Sweden'], continent:'europe', hint:'이케아와 노벨상으로 유명한 북유럽 나라'},
+  {kr:'노르웨이', en:['Norway'], continent:'europe', hint:'피오르드 해안 절경으로 유명한 북유럽 나라'},
+  {kr:'덴마크', en:['Denmark'], continent:'europe', hint:'레고 블록과 인어공주 동상으로 유명한 나라'},
+  {kr:'아이슬란드', en:['Iceland'], continent:'europe', hint:'오로라와 화산, 빙하가 가득한 북대서양 섬나라'},
+  {kr:'아일랜드', en:['Ireland'], continent:'europe', hint:'초록빛 들판과 성 패트릭의 날로 유명한 섬나라'},
+  {kr:'세르비아', en:['Serbia'], continent:'europe', hint:'발칸반도에 있는 내륙국'},
+  {kr:'크로아티아', en:['Croatia'], continent:'europe', hint:'두브로브니크 등 아름다운 해안 도시가 있는 발칸 나라'},
+  {kr:'불가리아', en:['Bulgaria'], continent:'europe', hint:'장미 향수 생산으로 유명한 발칸반도 나라'},
+
+  // ---------- AFRICA ----------
+  {kr:'이집트', en:['Egypt'], continent:'africa', hint:'피라미드와 스핑크스, 나일강으로 유명한 나라'},
+  {kr:'리비아', en:['Libya'], continent:'africa', hint:'북아프리카, 국토 대부분이 사막인 나라'},
+  {kr:'튀니지', en:['Tunisia'], continent:'africa', hint:'지중해와 마주한, 아프리카 북부의 작은 나라'},
+  {kr:'알제리', en:['Algeria'], continent:'africa', hint:'아프리카 대륙에서 영토가 가장 넓은 나라'},
+  {kr:'모로코', en:['Morocco'], continent:'africa', hint:'사하라 사막과 카사블랑카가 있는 북서아프리카 나라'},
+  {kr:'수단', en:['Sudan'], continent:'africa', hint:'나일강 상류에 위치한, 한때 아프리카에서 가장 큰 영토를 가졌던 나라'},
+  {kr:'에티오피아', en:['Ethiopia'], continent:'africa', hint:'커피의 원산지로 알려진 동아프리카 나라'},
+  {kr:'케냐', en:['Kenya'], continent:'africa', hint:'사파리 관광과 장거리 달리기 선수들로 유명한 동아프리카 나라'},
+  {kr:'탄자니아', en:['Tanzania'], continent:'africa', hint:'아프리카 최고봉 킬리만자로산이 있는 나라'},
+  {kr:'우간다', en:['Uganda'], continent:'africa', hint:'빅토리아호 인근에 있는 동아프리카의 내륙국'},
+  {kr:'콩고민주공화국', en:['Democratic Republic of the Congo','DR Congo','Congo, Dem. Rep.'], aliasesKr:['콩고','DR콩고','민주콩고'], continent:'africa', hint:'아프리카 중앙의 거대한 열대우림이 있는 나라'},
+  {kr:'나이지리아', en:['Nigeria'], continent:'africa', hint:'아프리카에서 인구가 가장 많은 서아프리카 나라'},
+  {kr:'가나', en:['Ghana'], continent:'africa', hint:"예전 이름이 '황금해안'이었던, 카카오 생산이 많은 나라"},
+  {kr:'세네갈', en:['Senegal'], continent:'africa', hint:'아프리카 대륙 서쪽 끝, 대서양과 마주한 나라'},
+  {kr:'남아프리카공화국', en:['South Africa'], continent:'africa', hint:'넬슨 만델라의 나라로, 케이프타운과 희망봉이 있는 곳'},
+  {kr:'짐바브웨', en:['Zimbabwe'], continent:'africa', hint:'빅토리아 폭포가 흐르는 남부아프리카 나라'},
+  {kr:'잠비아', en:['Zambia'], continent:'africa', hint:'빅토리아 폭포를 이웃 나라와 나누어 가진 남부아프리카 내륙국'},
+  {kr:'모잠비크', en:['Mozambique'], continent:'africa', hint:'인도양과 마주한 남동아프리카 나라'},
+  {kr:'마다가스카르', en:['Madagascar'], continent:'africa', hint:'독특한 동식물이 사는 아프리카 동쪽의 큰 섬나라'},
+  {kr:'앙골라', en:['Angola'], continent:'africa', hint:'석유 자원이 풍부한 남서아프리카 나라'},
+  {kr:'카메룬', en:['Cameroon'], continent:'africa', hint:"다양한 지형 때문에 '아프리카의 축소판'이라 불리는 나라"},
+  {kr:'코트디부아르', en:['Ivory Coast',"Cote d'Ivoire","Côte d'Ivoire"], aliasesKr:['아이보리코스트'], continent:'africa', hint:"예전 이름이 '상아해안'이었던, 카카오 최대 생산국"},
+  {kr:'말리', en:['Mali'], continent:'africa', hint:'사하라 사막에 걸쳐 있는 서아프리카 내륙국'},
+  {kr:'소말리아', en:['Somalia'], continent:'africa', hint:"아프리카 대륙 동쪽 끝, '아프리카의 뿔'이라 불리는 지역에 있는 나라"},
+
+  // ---------- NORTH AMERICA ----------
+  {kr:'미국', en:['United States of America','United States'], aliasesKr:['USA','아메리카'], continent:'namerica', hint:'자유의 여신상이 있는, 50개의 주로 이루어진 나라'},
+  {kr:'캐나다', en:['Canada'], continent:'namerica', hint:'단풍잎 국기와 메이플시럽으로 유명한, 영토가 매우 넓은 나라'},
+  {kr:'멕시코', en:['Mexico'], continent:'namerica', hint:'타코와 마야·아스텍 문명 유적이 있는 나라'},
+  {kr:'쿠바', en:['Cuba'], continent:'namerica', hint:'시가와 살사 음악, 클래식 자동차로 유명한 카리브해 섬나라'},
+  {kr:'자메이카', en:['Jamaica'], continent:'namerica', hint:'레게 음악과 단거리 육상 스타들의 나라'},
+  {kr:'과테말라', en:['Guatemala'], continent:'namerica', hint:'마야 문명 유적 티칼이 있는 중앙아메리카 나라'},
+  {kr:'코스타리카', en:['Costa Rica'], continent:'namerica', hint:'정규 군대가 없는, 생태관광으로 유명한 중앙아메리카 나라'},
+  {kr:'파나마', en:['Panama'], continent:'namerica', hint:'태평양과 대서양을 잇는 운하가 있는 나라'},
+  {kr:'온두라스', en:['Honduras'], continent:'namerica', hint:'카리브해와 마주한 중앙아메리카 나라'},
+  {kr:'니카라과', en:['Nicaragua'], continent:'namerica', hint:'중앙아메리카에서 가장 큰 호수가 있는 나라'},
+  {kr:'도미니카공화국', en:['Dominican Republic'], continent:'namerica', hint:'히스파니올라섬의 동쪽 절반을 차지하는, 야구 선수를 많이 배출한 나라'},
+  {kr:'아이티', en:['Haiti'], continent:'namerica', hint:'히스파니올라섬의 서쪽 절반을 차지하는, 세계 최초의 흑인 공화국'},
+
+  // ---------- SOUTH AMERICA ----------
+  {kr:'브라질', en:['Brazil'], continent:'samerica', hint:'아마존 열대우림과 삼바 축제로 유명한 남미 최대의 나라'},
+  {kr:'아르헨티나', en:['Argentina'], continent:'samerica', hint:'탱고와 축구로 유명한, 남미에서 영토가 두 번째로 큰 나라'},
+  {kr:'칠레', en:['Chile'], continent:'samerica', hint:'남북으로 매우 길게 뻗은 모양의, 와인 생산이 많은 나라'},
+  {kr:'페루', en:['Peru'], continent:'samerica', hint:'공중도시 마추픽추 유적이 있는 나라'},
+  {kr:'콜롬비아', en:['Colombia'], continent:'samerica', hint:'커피 생산으로 유명한 남미 북부 나라'},
+  {kr:'베네수엘라', en:['Venezuela'], continent:'samerica', hint:'세계에서 가장 높은 폭포인 앙헬폭포가 있는 나라'},
+  {kr:'에콰도르', en:['Ecuador'], continent:'samerica', hint:"갈라파고스 제도가 있고, 나라 이름 자체가 '적도'를 뜻하는 나라"},
+  {kr:'볼리비아', en:['Bolivia'], continent:'samerica', hint:'세계 최대의 소금사막 우유니가 있는 내륙국'},
+  {kr:'파라과이', en:['Paraguay'], continent:'samerica', hint:'남미 중앙에 위치한 내륙국'},
+  {kr:'우루과이', en:['Uruguay'], continent:'samerica', hint:'남미에서 가장 작은 나라 중 하나로, 축구 월드컵 첫 우승국'},
+
+  // ---------- OCEANIA ----------
+  {kr:'호주', en:['Australia'], continent:'oceania', hint:'캥거루와 코알라, 시드니 오페라하우스가 있는 대륙 나라'},
+  {kr:'뉴질랜드', en:['New Zealand'], continent:'oceania', hint:"키위새와 영화 '반지의 제왕' 촬영지로 유명한 나라"},
+  {kr:'파푸아뉴기니', en:['Papua New Guinea'], continent:'oceania', hint:'오세아니아에서 인구가 가장 많은 섬나라'},
+  {kr:'피지', en:['Fiji'], continent:'oceania', hint:'남태평양의 아름다운 휴양지로 유명한 섬나라'},
+  {kr:'솔로몬제도', en:['Solomon Islands'], continent:'oceania', hint:'남태평양에 흩어진 수백 개의 섬으로 이루어진 나라'},
+  {kr:'바누아투', en:['Vanuatu'], continent:'oceania', hint:'남태평양의 화산섬들로 이루어진 나라'},
+];
+
+/* =========================================================
+   GEO MATCHING
+========================================================= */
+const PRIMARY_GEOJSON_URL = 'https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json';
+const FALLBACK_GEOJSON_URL = 'https://cdn.jsdelivr.net/gh/holtzy/D3-graph-gallery@master/DATA/world.geojson';
+
+function normalize(s){
+  return s.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9\s]/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+
+function buildIndex(geojson){
+  const idx = new Map();
+  for(const f of geojson.features){
+    const props = f.properties || {};
+    const raw = props.name || props.NAME || props.ADMIN || props.name_long || props.NAME_LONG || props.sovereignt || '';
+    if(!raw) continue;
+    idx.set(normalize(raw), f);
+  }
+  return idx;
+}
+
+function findFeature(idx, candidates){
+  for(const c of candidates){
+    const n = normalize(c);
+    if(idx.has(n)) return idx.get(n);
+  }
+  for(const c of candidates){
+    const n = normalize(c);
+    for(const [key, feat] of idx){
+      if((key.includes(n) || n.includes(key)) && Math.abs(key.length - n.length) <= 8){
+        return feat;
+      }
+    }
+  }
+  return null;
+}
+
+/* =========================================================
+   STATE
+========================================================= */
+let geoReady = false;
+let pools = {}; // continent -> array of country objects with .feature attached
+const sessionBest = {}; // continent -> {correct,total,score}
+
+let state = {
+  view:'menu',
+  stage:null,
+  queue:[],
+  index:0,
+  score:0,
+  correctCount:0,
+  passCount:0,
+  current:null,
+  usedChosung:false,
+  usedFact:false,
+  answered:false,
+  stamps:[],
+};
+
+/* =========================================================
+   HANGUL HELPERS
+========================================================= */
+const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function getChosung(str){
+  return Array.from(str).map(ch=>{
+    const code = ch.charCodeAt(0) - 0xAC00;
+    if(code < 0 || code > 11171) return ch;
+    return CHO[Math.floor(code/588)];
+  }).join('');
+}
+function normalizeAnswer(s){
+  return s.replace(/\s+/g,'').trim().toLowerCase();
+}
+function checkAnswer(country, input){
+  if(!input) return false;
+  const candidates = [country.kr, ...(country.aliasesKr||[])].map(normalizeAnswer);
+  return candidates.includes(normalizeAnswer(input));
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+/* =========================================================
+   DOM REFS
+========================================================= */
+const $ = (id)=>document.getElementById(id);
+const els = {
+  menuGrid: $('menuGrid'),
+  loadingNote: $('loadingNote'),
+  errorBanner: $('errorBanner'),
+  errorMsg: $('errorMsg'),
+  btnRetry: $('btnRetry'),
+  topbarStatus: $('topbarStatus'),
+  views:{menu:$('view-menu'), quiz:$('view-quiz'), result:$('view-result')},
+  mapHost: $('mapHost'),
+  mapLoading: $('mapLoading'),
+  answerForm: $('answerForm'),
+  answerInput: $('answerInput'),
+  btnChosung: $('btnChosung'),
+  btnFact: $('btnFact'),
+  btnSkip: $('btnSkip'),
+  hintDisplay: $('hintDisplay'),
+  feedback: $('feedback'),
+  btnNext: $('btnNext'),
+  stampStrip: $('stampStrip'),
+  resultTitle: $('resultTitle'),
+  resultSub: $('resultSub'),
+  resultStats: $('resultStats'),
+  btnRetryStage: $('btnRetryStage'),
+  btnNextStage: $('btnNextStage'),
+  btnToMenu: $('btnToMenu'),
+};
+
+/* =========================================================
+   VIEW SWITCHING
+========================================================= */
+function showView(name){
+  state.view = name;
+  Object.entries(els.views).forEach(([k,el])=> el.classList.toggle('active', k===name));
+  renderTopbarStatus();
+}
+function renderTopbarStatus(){
+  if(state.view !== 'quiz'){ els.topbarStatus.innerHTML=''; return; }
+  els.topbarStatus.innerHTML = `
+    <span class="pill exit-pill" id="exitPill">← 대륙 선택</span>
+    <span class="pill">${STAGE_LABEL[state.stage]} · <span class="mono">${state.index+1}/${state.queue.length}</span></span>
+    <span class="pill">점수 <span class="mono">${state.score}</span></span>
+  `;
+  document.getElementById('exitPill').addEventListener('click', ()=> showView('menu'));
+}
+
+/* =========================================================
+   MENU RENDER
+========================================================= */
+function renderMenu(){
+  els.menuGrid.innerHTML = '';
+  STAGES.forEach((stage, i)=>{
+    const list = pools[stage] || [];
+    const card = document.createElement('button');
+    card.className = 'stage-card';
+    card.disabled = !geoReady || list.length === 0;
+    const best = sessionBest[stage];
+    card.innerHTML = `
+      <div class="num mono">STAGE ${String(i+1).padStart(2,'0')}</div>
+      <div class="name serif">${STAGE_LABEL[stage]}</div>
+      <div class="count">${list.length}개국 수록</div>
+      ${best ? `<div class="best">최고 ${best.correct}/${best.total} · ${best.score}점</div>` : ''}
+    `;
+    card.addEventListener('click', ()=> startStage(stage));
+    els.menuGrid.appendChild(card);
+  });
+}
+
+/* =========================================================
+   STAGE / QUESTION FLOW
+========================================================= */
+function startStage(stage){
+  state.stage = stage;
+  state.queue = shuffle(pools[stage]);
+  state.index = 0;
+  state.score = 0;
+  state.correctCount = 0;
+  state.passCount = 0;
+  state.stamps = [];
+  showView('quiz');
+  loadQuestion();
+}
+
+function loadQuestion(){
+  if(state.index >= state.queue.length){
+    finishStage();
+    return;
+  }
+  state.current = state.queue[state.index];
+  state.usedChosung = false;
+  state.usedFact = false;
+  state.answered = false;
+
+  els.answerInput.value = '';
+  els.answerInput.disabled = false;
+  els.hintDisplay.innerHTML = '';
+  els.feedback.textContent = '';
+  els.feedback.className = 'feedback';
+  els.btnNext.style.display = 'none';
+  els.btnChosung.disabled = false;
+  els.btnChosung.classList.remove('used');
+  els.btnFact.disabled = false;
+  els.btnFact.classList.remove('used');
+  els.btnSkip.disabled = false;
+  els.answerForm.querySelector('button[type=submit]').disabled = false;
+
+  renderTopbarStatus();
+  renderMap();
+  renderStampStrip();
+  els.answerInput.focus();
+}
+
+// Some countries would otherwise wreck a continent's zoom level:
+// Russia's territory stretches deep into Siberia, so including it in the
+// "how far should we zoom" calculation forces the whole of Europe to shrink.
+// It's still drawn on the map as usual — just not used to decide the zoom,
+// unless it happens to be the actual answer for the current question.
+const ZOOM_EXCLUDE = { europe: ['러시아'] };
+
+// Some Pacific nations (Fiji in particular) straddle the 180° antimeridian,
+// which breaks naive bounding-box math. Rotating the projection so the
+// "seam" falls outside the visible Oceania region fixes this.
+const STAGE_ROTATE = { oceania: [-170, 0] };
+
+function getFitFeatureCollection(pool, target){
+  const excludeList = ZOOM_EXCLUDE[state.stage] || [];
+  const feats = pool
+    .filter(c => c === target || !excludeList.includes(c.kr))
+    .map(c => c.feature);
+  return {type:'FeatureCollection', features: feats};
+}
+
+function renderMap(){
+  const host = els.mapHost;
+  host.innerHTML = '';
+  const pool = pools[state.stage];
+  const width = host.clientWidth || 500;
+  const height = host.clientHeight || 380;
+
+  const svg = d3.select(host).append('svg').attr('viewBox', `0 0 ${width} ${height}`);
+  const fitFc = getFitFeatureCollection(pool, state.current);
+  const projection = d3.geoMercator();
+  const rotate = STAGE_ROTATE[state.stage];
+  if(rotate) projection.rotate(rotate);
+  projection.fitExtent([[14,14],[width-14,height-14]], fitFc);
+  const path = d3.geoPath(projection);
+
+  svg.append('g').selectAll('path')
+    .data(pool.map(c=>c.feature))
+    .join('path')
+    .attr('d', path)
+    .attr('class', d => d === state.current.feature ? 'country target' : 'country');
+}
+
+function renderStampStrip(){
+  els.stampStrip.innerHTML = '';
+  state.stamps.forEach(s=>{
+    const div = document.createElement('div');
+    div.className = 'stamp ' + (s.ok ? 'ok' : 'fail');
+    div.textContent = s.kr;
+    els.stampStrip.appendChild(div);
+  });
+}
+
+function addHintLine(tag, text, extraClass){
+  const div = document.createElement('div');
+  div.className = 'hint-line' + (extraClass ? ' ' + extraClass : '');
+  div.innerHTML = `<span class="tag mono">${tag}</span>${text}`;
+  els.hintDisplay.appendChild(div);
+}
+
+els.btnChosung.addEventListener('click', ()=>{
+  if(state.answered || state.usedChosung) return;
+  state.usedChosung = true;
+  els.btnChosung.disabled = true;
+  els.btnChosung.classList.add('used');
+  addHintLine('초성', getChosung(state.current.kr), 'chosung-line');
+});
+
+els.btnFact.addEventListener('click', ()=>{
+  if(state.answered || state.usedFact) return;
+  state.usedFact = true;
+  els.btnFact.disabled = true;
+  els.btnFact.classList.add('used');
+  addHintLine('특징', state.current.hint);
+});
+
+els.btnSkip.addEventListener('click', ()=>{
+  if(state.answered) return;
+  resolveQuestion(false, true);
+});
+
+els.answerForm.addEventListener('submit', (e)=>{
+  e.preventDefault();
+  if(state.answered) return;
+  const val = els.answerInput.value;
+  if(!val.trim()) return;
+  const ok = checkAnswer(state.current, val);
+  if(ok){
+    resolveQuestion(true, false);
+  } else {
+    els.feedback.textContent = '오답이에요. 힌트를 사용해보고 다시 시도해보세요!';
+    els.feedback.className = 'feedback wrong';
+    els.answerInput.select();
+  }
+});
+
+function resolveQuestion(correct, gaveUp){
+  state.answered = true;
+  els.answerInput.disabled = true;
+  els.btnChosung.disabled = true;
+  els.btnFact.disabled = true;
+  els.btnSkip.disabled = true;
+  els.answerForm.querySelector('button[type=submit]').disabled = true;
+
+  if(correct){
+    let points = 10;
+    if(state.usedChosung) points -= 3;
+    if(state.usedFact) points -= 4;
+    points = Math.max(3, points);
+    state.score += points;
+    state.correctCount += 1;
+    state.stamps.push({kr: state.current.kr, ok:true});
+    els.feedback.textContent = `정답입니다! (+${points}점) — ${state.current.kr}`;
+    els.feedback.className = 'feedback correct';
+  } else {
+    state.passCount += 1;
+    state.stamps.push({kr: state.current.kr, ok:false});
+    els.feedback.textContent = `정답은 ${state.current.kr} 이었어요.`;
+    els.feedback.className = 'feedback passed';
+  }
+  renderTopbarStatus();
+  renderStampStrip();
+  els.btnNext.style.display = 'inline-block';
+  els.btnNext.focus();
+}
+
+els.btnNext.addEventListener('click', ()=>{
+  state.index += 1;
+  loadQuestion();
+});
+
+function finishStage(){
+  const total = state.queue.length;
+  sessionBest[state.stage] = {correct: state.correctCount, total, score: state.score};
+  els.resultTitle.textContent = `${STAGE_LABEL[state.stage]} 완주!`;
+  els.resultSub.textContent = '여권에 도장을 모두 찍었어요. 결과를 확인해보세요.';
+  els.resultStats.innerHTML = `
+    <div class="stat"><div class="num mono">${state.correctCount}/${total}</div><div class="label">정답</div></div>
+    <div class="stat"><div class="num mono">${state.passCount}</div><div class="label">포기</div></div>
+    <div class="stat"><div class="num mono">${state.score}</div><div class="label">총점</div></div>
+    <div class="stat"><div class="num mono">${Math.round(state.correctCount/total*100)}%</div><div class="label">정답률</div></div>
+  `;
+  const nextIdx = STAGES.indexOf(state.stage) + 1;
+  const hasNext = nextIdx < STAGES.length && pools[STAGES[nextIdx]] && pools[STAGES[nextIdx]].length>0;
+  els.btnNextStage.style.display = hasNext ? 'inline-block' : 'none';
+  if(hasNext) els.btnNextStage.dataset.next = STAGES[nextIdx];
+  showView('result');
+}
+
+els.btnRetryStage.addEventListener('click', ()=> startStage(state.stage));
+els.btnNextStage.addEventListener('click', ()=> startStage(els.btnNextStage.dataset.next));
+els.btnToMenu.addEventListener('click', ()=>{ renderMenu(); showView('menu'); });
+
+/* =========================================================
+   RESIZE
+========================================================= */
+let resizeTimer = null;
+window.addEventListener('resize', ()=>{
+  if(state.view !== 'quiz') return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderMap, 150);
+});
+
+/* =========================================================
+   GEO LOADING
+========================================================= */
+async function loadGeo(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('fetch failed: ' + res.status);
+  return res.json();
+}
+
+async function initGeo(){
+  els.errorBanner.style.display = 'none';
+  els.loadingNote.style.display = 'block';
+  els.loadingNote.textContent = '지도 데이터를 불러오는 중입니다…';
+  try{
+    let geojson;
+    try{
+      geojson = await loadGeo(PRIMARY_GEOJSON_URL);
+    }catch(e){
+      geojson = await loadGeo(FALLBACK_GEOJSON_URL);
+    }
+    const idx = buildIndex(geojson);
+    pools = {};
+    STAGES.forEach(s=> pools[s] = []);
+    COUNTRIES.forEach(c=>{
+      const feat = findFeature(idx, c.en);
+      if(feat){
+        c.feature = feat;
+        pools[c.continent].push(c);
+      } else {
+        console.warn('지도에서 찾지 못한 나라:', c.kr, c.en);
+      }
+    });
+    geoReady = true;
+    els.loadingNote.style.display = 'none';
+    renderMenu();
+  }catch(err){
+    console.error(err);
+    els.loadingNote.style.display = 'none';
+    els.errorBanner.style.display = 'flex';
+  }
+}
+
+els.btnRetry.addEventListener('click', initGeo);
+
+/* =========================================================
+   INIT
+========================================================= */
+renderMenu();
+initGeo();
+</script>
+</body>
+</html>

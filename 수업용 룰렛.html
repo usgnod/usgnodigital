@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>수업용 룰렛</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;min-height:100vh;padding:24px}
+  h1{font-size:22px;font-weight:500;color:#1a1a1a;margin-bottom:20px}
+  .wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .left{flex:0 0 340px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .right{flex:1;min-width:300px;display:flex;flex-direction:column;gap:12px;background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:20px}
+  canvas{border-radius:50%;display:block;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,0.1)}
+  .spin-btn{width:140px;height:44px;border-radius:22px;border:none;background:#1a1a1a;color:#fff;font-size:15px;font-weight:500;cursor:pointer;transition:opacity .2s}
+  .spin-btn:hover{opacity:.85}
+  .spin-btn:disabled{opacity:.4;cursor:not-allowed}
+  .result-box{width:100%;max-width:300px;background:#f5f5f0;border:2px solid rgba(0,0,0,0.12);border-radius:12px;padding:1rem 1.25rem;text-align:center;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:border-color .3s}
+  .result-label{font-size:12px;color:#666}
+  .result-name{font-size:22px;font-weight:500;color:#1a1a1a}
+  .section-title{font-size:13px;font-weight:500;color:#666;margin-bottom:6px}
+  .item-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;background:#fafafa;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:8px 10px;row-gap:6px}
+  .item-name{font-size:13px;color:#1a1a1a;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-name:hover{text-decoration:underline}
+  .prob-wrap{display:flex;align-items:center;gap:6px;grid-column:1/-1}
+  input[type=range]{flex:1;height:4px;accent-color:#1a1a1a;cursor:pointer}
+  .prob-input{width:104px;height:28px;font-size:12px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:#fff;color:#1a1a1a;text-align:center;padding:0 4px}
+  .prob-input:focus{outline:none;border-color:#888}
+  .prob-label{font-size:11px;color:#888;white-space:nowrap}
+  .del-btn{width:28px;height:28px;border-radius:8px;border:0.5px solid rgba(0,0,0,0.15);background:transparent;color:#888;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+  .del-btn:hover{background:#fce8e8;color:#c0392b;border-color:#e9b0b0}
+  .name-controls{display:flex;align-items:center;gap:6px;min-width:0}
+  .add-row{display:flex;gap:8px;margin-top:8px}
+  .add-input{flex:1;height:36px;font-size:13px;padding:0 10px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:#fff;color:#1a1a1a}
+  .add-input:focus{outline:none;border-color:#888}
+  .add-btn{height:36px;padding:0 14px;font-size:13px;white-space:nowrap;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer}
+  .add-btn:hover{opacity:.85}
+  .total-row{font-size:12px;color:#666;text-align:right;margin-top:4px}
+  .total-err{color:#c0392b}
+  .item-name-edit{font-size:13px;height:28px;border:0.5px solid #888;border-radius:8px;background:#fff;color:#1a1a1a;padding:0 6px;width:100%}
+  .item-name-edit:focus{outline:none}
+</style>
+</head>
+<body>
+<h1>🎡 수업용 룰렛</h1>
+<div class="wrap">
+  <div class="left">
+    <div style="position:relative;width:300px;height:300px">
+      <canvas id="wc" width="300" height="300"></canvas>
+      <!-- 화살표: 항상 12시(위) 고정 -->
+      <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:22px solid #1a1a1a"></div>
+    </div>
+    <button class="spin-btn" id="spinBtn">돌리기</button>
+    <div class="result-box" id="resultBox">
+      <span class="result-label">당첨 결과</span>
+      <span class="result-name" id="resultName">—</span>
+    </div>
+  </div>
+  <div class="right">
+    <div class="section-title">상품 목록</div>
+    <div id="itemList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="total-row" id="totalRow">합계: 100%</div>
+    <div class="add-row">
+      <input class="add-input" id="newName" type="text" placeholder="상품 이름 입력" />
+      <button class="add-btn" id="addBtn">+ 추가</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS=['#7F77DD','#1D9E75','#D85A30','#378ADD','#D4537E','#639922','#BA7517','#E24B4A','#888780','#5DCAA5','#F0997B','#85B7EB'];
+const DEFAULT_ITEMS=[
+  {name:'1등 상품',prob:30},
+  {name:'2등 상품',prob:25},
+  {name:'3등 상품',prob:20},
+  {name:'참가상',prob:15},
+  {name:'꽝',prob:10},
+];
+function loadItems(){
+  try{const s=localStorage.getItem('roulette_items');return s?JSON.parse(s):DEFAULT_ITEMS;}
+  catch(e){return DEFAULT_ITEMS;}
+}
+function saveItems(){
+  try{localStorage.setItem('roulette_items',JSON.stringify(items));}catch(e){}
+}
+let items=loadItems();
+let spinning=false;
+// wheelOffset: 0번 칸의 시작이 12시(−π/2)에서 얼마나 시계방향으로 밀려있는가 (라디안)
+// 즉, 실제 0번 칸 시작각도 = −π/2 + wheelOffset
+let wheelOffset=0;
+
+const canvas=document.getElementById('wc');
+const ctx=canvas.getContext('2d');
+const CX=150,CY=150,R=140;
+const TWO_PI=Math.PI*2;
+
+// 전체 prob 합
+function total(){return items.reduce((s,it)=>s+it.prob,0)||1;}
+
+// 각 칸의 라디안 크기 배열
+function slices(){
+  const t=total();
+  return items.map(it=>(it.prob/t)*TWO_PI);
+}
+
+// ─── 그리기 ───────────────────────────────────────────────────
+// 0번 칸 시작 = −π/2 + wheelOffset (시계방향으로 쌓음)
+function draw(){
+  ctx.clearRect(0,0,300,300);
+  const sv=slices();
+  let ang=-Math.PI/2+wheelOffset;
+  sv.forEach((slice,i)=>{
+    ctx.beginPath();ctx.moveTo(CX,CY);
+    ctx.arc(CX,CY,R,ang,ang+slice);
+    ctx.closePath();
+    ctx.fillStyle=COLORS[i%COLORS.length];ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    // 라벨
+    const mid=ang+slice/2;
+    ctx.save();
+    ctx.translate(CX+Math.cos(mid)*R*0.65,CY+Math.sin(mid)*R*0.65);
+    ctx.rotate(mid+Math.PI/2);
+    ctx.fillStyle='#fff';ctx.font='bold 12px sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    let txt=items[i].name;
+    const maxW=70;
+    if(ctx.measureText(txt).width>maxW){
+      while(txt.length>0&&ctx.measureText(txt+'…').width>maxW)txt=txt.slice(0,-1);
+      txt+=txt.length<items[i].name.length?'…':'';
+    }
+    ctx.fillText(txt,0,0);ctx.restore();
+    ang+=slice;
+  });
+  // 중심 원
+  ctx.beginPath();ctx.arc(CX,CY,18,0,TWO_PI);
+  ctx.fillStyle='#fff';ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.15)';ctx.lineWidth=1;ctx.stroke();
+}
+
+// ─── 당첨 판정 ────────────────────────────────────────────────
+// wheelOffset 기준: 0번 칸이 12시에서 wheelOffset만큼 시계방향 밀림.
+// 화살표(12시)는 0번 칸 시작에서 −wheelOffset 위치, 즉
+// 정규화된 위치 pos = (−wheelOffset % 2π + 2π) % 2π 가 어느 칸에 속하는지 판정.
+function getWinner(){
+  const sv=slices();
+  // 화살표가 0번 칸 기준으로 몇 라디안 위치인지
+  const pos=((-(wheelOffset%TWO_PI))%TWO_PI+TWO_PI)%TWO_PI;
+  let acc=0;
+  for(let i=0;i<sv.length;i++){
+    acc+=sv[i];
+    if(pos<acc) return i;
+  }
+  return sv.length-1;
+}
+
+// ─── 스핀 ─────────────────────────────────────────────────────
+function spin(){
+  if(spinning||items.length<2) return;
+  spinning=true;
+  document.getElementById('spinBtn').disabled=true;
+  document.getElementById('resultName').textContent='—';
+  document.getElementById('resultBox').style.borderColor='rgba(0,0,0,0.12)';
+
+  // 1) 확률에 따라 당첨 칸 선택
+  const t=total();
+  const sv=slices();
+  let rand=Math.random()*t, cumProb=0, targetIdx=0;
+  for(let i=0;i<items.length;i++){
+    cumProb+=items[i].prob;
+    if(rand<cumProb){targetIdx=i;break;}
+  }
+
+  // 2) targetIdx 칸의 중앙이 12시(화살표)에 오도록 wheelOffset 목표값 계산
+  //    칸 중앙 = 해당 칸 시작 + slice/2
+  //    12시에 오려면: wheelOffset % 2π = -(칸 중앙의 누적각도) mod 2π
+  let cumAngle=0;
+  for(let i=0;i<targetIdx;i++) cumAngle+=sv[i];
+  // 칸 양 끝 10% 제외한 80% 구간 내 랜덤 위치 — 아슬아슬하게 멈추는 효과
+  const margin=sv[targetIdx]*0.01;
+  const targetCenter=cumAngle+margin+(Math.random()*(sv[targetIdx]-margin*2));
+  // wheelOffset을 targetCenter만큼 반대 방향(=휠이 시계방향 회전)으로 이동
+  // 현재 wheelOffset 기준 최소 이동량 계산 후 여러 바퀴 추가
+  const currentMod=((wheelOffset%TWO_PI)+TWO_PI)%TWO_PI;
+  // 목표 mod 값: 12시에 targetIdx 중앙이 오려면 wheelOffset mod 2π = 2π - targetCenter (단, 0~2π)
+  const targetMod=((TWO_PI-targetCenter)%TWO_PI+TWO_PI)%TWO_PI;
+  let delta=targetMod-currentMod;
+  if(delta<=0) delta+=TWO_PI;           // 항상 시계방향(양수) 회전
+  const fullRotations=TWO_PI*(5+Math.floor(Math.random()*6)); // 5~10바퀴
+  const totalDelta=delta+fullRotations;
+
+  const startOffset=wheelOffset;
+  const duration=4000;
+  const startTime=performance.now();
+  function easeOut(t){return 1-Math.pow(1-t,4);}
+
+  function frame(now){
+    const t=Math.min((now-startTime)/duration,1);
+    wheelOffset=startOffset+totalDelta*easeOut(t);
+    draw();
+    if(t<1){
+      requestAnimationFrame(frame);
+    } else {
+      wheelOffset=startOffset+totalDelta;
+      draw();
+      spinning=false;
+      document.getElementById('spinBtn').disabled=false;
+      // getWinner()로 검증, targetIdx와 일치해야 함
+      const winner=getWinner();
+      document.getElementById('resultName').textContent=items[winner].name;
+      document.getElementById('resultBox').style.borderColor=COLORS[winner%COLORS.length];
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// ─── 목록 렌더 ────────────────────────────────────────────────
+function renderList(){
+  const list=document.getElementById('itemList');
+  list.innerHTML='';
+  const t=items.reduce((s,it)=>s+it.prob,0);
+  items.forEach((item,idx)=>{
+    const row=document.createElement('div');
+    row.className='item-row';
+    const dot=`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${COLORS[idx%COLORS.length]};margin-right:6px;flex-shrink:0"></span>`;
+    row.innerHTML=`
+      <div class="name-controls">
+        ${dot}
+        <span class="item-name" title="클릭하여 수정" data-idx="${idx}">${item.name}</span>
+      </div>
+      <button class="del-btn" data-idx="${idx}" title="삭제">✕</button>
+      <div class="prob-wrap">
+        <input type="range" min="1" max="100" step="1" value="${item.prob}" data-idx="${idx}" class="prob-slider">
+        <input type="number" min="1" max="100" step="1" value="${item.prob}" data-idx="${idx}" class="prob-input">
+        <span class="prob-label">%</span>
+      </div>`;
+    row.querySelector('.item-name').addEventListener('click',e=>{
+      const i=+e.target.dataset.idx;
+      const inp=document.createElement('input');
+      inp.className='item-name-edit';inp.value=items[i].name;
+      e.target.replaceWith(inp);inp.focus();inp.select();
+      const save=()=>{items[i].name=inp.value||items[i].name;saveItems();renderList();draw();};
+      inp.addEventListener('blur',save);
+      inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')save();});
+    });
+    row.querySelector('.prob-slider').addEventListener('input',e=>{
+      items[+e.target.dataset.idx].prob=+e.target.value;saveItems();renderList();draw();
+    });
+    row.querySelector('.prob-input').addEventListener('change',e=>{
+      const v=Math.max(1,Math.min(100,+e.target.value||1));
+      items[+e.target.dataset.idx].prob=v;saveItems();renderList();draw();
+    });
+    row.querySelector('.del-btn').addEventListener('click',e=>{
+      items.splice(+e.target.dataset.idx,1);saveItems();renderList();draw();
+    });
+    list.appendChild(row);
+  });
+  const totalEl=document.getElementById('totalRow');
+  totalEl.textContent=`합계: ${t}%`+(t!==100?' (100%로 맞추면 정확한 확률이 됩니다)':'');
+  totalEl.className='total-row'+(t!==100?' total-err':'');
+}
+
+document.getElementById('spinBtn').addEventListener('click',spin);
+document.getElementById('addBtn').addEventListener('click',()=>{
+  const inp=document.getElementById('newName');
+  const name=inp.value.trim();
+  if(!name)return;
+  items.push({name,prob:10});inp.value='';saveItems();
+  renderList();draw();
+});
+document.getElementById('newName').addEventListener('keydown',e=>{
+  if(e.key==='Enter')document.getElementById('addBtn').click();
+});
+
+renderList();
+draw();
+</script>
+</body>
+</html>
